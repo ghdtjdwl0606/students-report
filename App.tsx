@@ -35,67 +35,72 @@ const generateFixedQuestions = (): Question[] => {
 };
 
 const App: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<Step>(Step.SETUP);
   const [isSharedMode, setIsSharedMode] = useState(false);
+  const [currentStep, setCurrentStep] = useState<Step>(Step.SETUP);
   const [questions, setQuestions] = useState<Question[]>(generateFixedQuestions());
   const [studentInput, setStudentInput] = useState<StudentInput>({
     name: '',
     answers: {}
   });
 
-  // URL에서 공유 데이터 확인 및 복원
+  // URL에서 공유 데이터 확인 및 복원 (즉시 감지 로직)
   useEffect(() => {
     const checkHash = () => {
       const hash = window.location.hash;
       if (!hash) return;
 
       try {
-        // 방식 1: 초단축 배열 방식 (#s=)
-        if (hash.startsWith('#s=')) {
-          const compressed = hash.replace('#s=', '');
+        // 초압축 방식 (#v3=)
+        if (hash.startsWith('#v3=')) {
+          const compressed = hash.replace('#v3=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
 
-          const data = JSON.parse(decompressed);
-          const [name, rAns, lAns, rConf, lConf] = data;
+          const [name, rAnsStr, lAnsStr, rConfStr, lConfStr] = decompressed.split('|');
+          
+          const rAnswers = rAnsStr.split('^');
+          const lAnswers = lAnsStr.split('^');
+          const rConfigs = rConfStr.split('^').map(c => c.split('*'));
+          const lConfigs = lConfStr.split('^').map(c => c.split('*'));
           
           const answers: Record<string, string> = {};
           const restoredQs: Question[] = [];
 
-          rAns.forEach((ans: string, i: number) => {
+          rAnswers.forEach((ans, i) => {
             const id = `R-${i + 1}`;
             answers[id] = ans;
             restoredQs.push({
               id,
               number: i + 1,
               section: 'Reading',
-              category: rConf[i][0] || "일반",
-              correctAnswer: rConf[i][1],
-              points: rConf[i][2] === "" ? 1 : Number(rConf[i][2])
+              category: rConfigs[i][0] || "일반",
+              correctAnswer: rConfigs[i][1],
+              points: rConfigs[i][2] === "" ? 1 : Number(rConfigs[i][2])
             });
           });
 
-          lAns.forEach((ans: string, i: number) => {
+          lAnswers.forEach((ans, i) => {
             const id = `L-${i + 1}`;
             answers[id] = ans;
             restoredQs.push({
               id,
               number: i + 1,
               section: 'Listening',
-              category: lConf[i][0] || "일반",
-              correctAnswer: lConf[i][1],
-              points: lConf[i][2] === "" ? 1 : Number(lConf[i][2])
+              category: lConfigs[i][0] || "일반",
+              correctAnswer: lConfigs[i][1],
+              points: lConfigs[i][2] === "" ? 1 : Number(lConfigs[i][2])
             });
           });
 
           setQuestions(restoredQs);
           setStudentInput({ name, answers });
-          setCurrentStep(Step.REPORT);
           setIsSharedMode(true);
+          setCurrentStep(Step.REPORT);
+        } else if (hash.startsWith('#s=')) {
+          // 구버전 (#s=) 대응 생략 또는 동일하게 처리
         }
-        // 기존 호환용들 (#c=, #report=)은 용량이 크므로 필요한 경우 유지하거나 생략 가능.
       } catch (e) {
-        console.error("Failed to decode share link", e);
+        console.error("Link Error", e);
       }
     };
 
@@ -107,7 +112,7 @@ const App: React.FC = () => {
   const handleReset = () => {
     if (isSharedMode) {
       window.location.hash = '';
-      window.location.reload(); // 공유 모드 탈출 시 완전 초기화
+      window.location.reload(); 
     } else {
       setStudentInput({ name: '', answers: {} });
       setCurrentStep(Step.INPUT);
@@ -129,9 +134,9 @@ const App: React.FC = () => {
           </div>
           
           {isSharedMode ? (
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-slate-400">
-              <i className="fas fa-lock text-xs"></i>
-              <span className="text-xs font-bold uppercase tracking-widest">성적표 조회 전용 모드</span>
+            <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl">
+              <i className="fas fa-shield-check text-xs text-indigo-400"></i>
+              <span className="text-[10px] font-bold uppercase tracking-widest">성적표 조회 전용 모드</span>
             </div>
           ) : (
             <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
@@ -159,14 +164,14 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 container mx-auto px-6 py-10">
-        {currentStep === Step.SETUP && !isSharedMode && (
+        {!isSharedMode && currentStep === Step.SETUP && (
           <QuestionSetup 
             questions={questions} 
             setQuestions={setQuestions} 
             onNext={() => setCurrentStep(Step.INPUT)} 
           />
         )}
-        {currentStep === Step.INPUT && !isSharedMode && (
+        {!isSharedMode && currentStep === Step.INPUT && (
           <StudentEntry 
             questions={questions} 
             studentInput={studentInput} 
@@ -175,7 +180,7 @@ const App: React.FC = () => {
             onSubmit={() => setCurrentStep(Step.REPORT)}
           />
         )}
-        {currentStep === Step.REPORT && (
+        {(isSharedMode || currentStep === Step.REPORT) && (
           <ReportView 
             questions={questions} 
             studentInput={studentInput} 
@@ -183,8 +188,6 @@ const App: React.FC = () => {
             isShared={isSharedMode}
           />
         )}
-        {/* 공유 모드에서 부적절한 접근 시 강제 리포트 이동 */}
-        {isSharedMode && currentStep !== Step.REPORT && setCurrentStep(Step.REPORT)}
       </main>
 
       {!isSharedMode && (
