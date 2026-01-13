@@ -12,15 +12,6 @@ enum Step {
   REPORT
 }
 
-// 유니코드 안전한 Base64 디코딩 함수 (이전 방식 호환용)
-const b64_to_utf8 = (str: string) => {
-  try {
-    return decodeURIComponent(escape(window.atob(str)));
-  } catch(e) {
-    return "";
-  }
-};
-
 const generateFixedQuestions = (): Question[] => {
   const reading: Question[] = Array.from({ length: 36 }, (_, i) => ({
     id: `R-${i + 1}`,
@@ -59,55 +50,50 @@ const App: React.FC = () => {
       if (!hash) return;
 
       try {
-        // 방식 1: 압축 방식 (#c=)
-        if (hash.startsWith('#c=')) {
-          const compressed = hash.replace('#c=', '');
+        // 방식 1: 초단축 배열 방식 (#s=)
+        if (hash.startsWith('#s=')) {
+          const compressed = hash.replace('#s=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
 
-          const minData = JSON.parse(decompressed);
+          const data = JSON.parse(decompressed);
+          const [name, rAns, lAns, rConf, lConf] = data;
           
-          // 최소화된 데이터를 전체 Question 객체로 복원
-          const restoredQuestions: Question[] = [
-            ...(minData.qr || []).map((q: any[], i: number) => ({
-              id: `R-${i + 1}`,
+          const answers: Record<string, string> = {};
+          const restoredQs: Question[] = [];
+
+          rAns.forEach((ans: string, i: number) => {
+            const id = `R-${i + 1}`;
+            answers[id] = ans;
+            restoredQs.push({
+              id,
               number: i + 1,
               section: 'Reading',
-              category: q[0],
-              correctAnswer: q[1],
-              points: q[2]
-            })),
-            ...(minData.ql || []).map((q: any[], i: number) => ({
-              id: `L-${i + 1}`,
+              category: rConf[i][0] || "일반",
+              correctAnswer: rConf[i][1],
+              points: rConf[i][2] === "" ? 1 : Number(rConf[i][2])
+            });
+          });
+
+          lAns.forEach((ans: string, i: number) => {
+            const id = `L-${i + 1}`;
+            answers[id] = ans;
+            restoredQs.push({
+              id,
               number: i + 1,
               section: 'Listening',
-              category: q[0],
-              correctAnswer: q[1],
-              points: q[2]
-            }))
-          ];
-
-          setQuestions(restoredQuestions);
-          setStudentInput({
-            name: minData.n,
-            answers: minData.a
+              category: lConf[i][0] || "일반",
+              correctAnswer: lConf[i][1],
+              points: lConf[i][2] === "" ? 1 : Number(lConf[i][2])
+            });
           });
+
+          setQuestions(restoredQs);
+          setStudentInput({ name, answers });
           setCurrentStep(Step.REPORT);
           setIsSharedMode(true);
-        } 
-        // 방식 2: 이전 방식 (#report=)
-        else if (hash.startsWith('#report=')) {
-          const encodedData = hash.replace('#report=', '');
-          const decodedStr = b64_to_utf8(decodeURIComponent(encodedData));
-          const decodedData = JSON.parse(decodedStr);
-          
-          if (decodedData.questions && decodedData.studentInput) {
-            setQuestions(decodedData.questions);
-            setStudentInput(decodedData.studentInput);
-            setCurrentStep(Step.REPORT);
-            setIsSharedMode(true);
-          }
         }
+        // 기존 호환용들 (#c=, #report=)은 용량이 크므로 필요한 경우 유지하거나 생략 가능.
       } catch (e) {
         console.error("Failed to decode share link", e);
       }
@@ -121,10 +107,7 @@ const App: React.FC = () => {
   const handleReset = () => {
     if (isSharedMode) {
       window.location.hash = '';
-      setIsSharedMode(false);
-      setCurrentStep(Step.SETUP);
-      setQuestions(generateFixedQuestions());
-      setStudentInput({ name: '', answers: {} });
+      window.location.reload(); // 공유 모드 탈출 시 완전 초기화
     } else {
       setStudentInput({ name: '', answers: {} });
       setCurrentStep(Step.INPUT);
@@ -145,38 +128,45 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-            {[
-              { id: Step.SETUP, label: '정보 설정', icon: 'fa-cog' },
-              { id: Step.INPUT, label: '답안 입력', icon: 'fa-edit' },
-              { id: Step.REPORT, label: '결과 리포트', icon: 'fa-chart-pie' }
-            ].map((s) => (
-              <button
-                key={s.id}
-                disabled={currentStep < s.id && !isSharedMode}
-                onClick={() => !isSharedMode && setCurrentStep(s.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-                  currentStep === s.id 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-700'
-                } ${currentStep < s.id && !isSharedMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-              >
-                <i className={`fas ${s.icon}`}></i> {s.label}
-              </button>
-            ))}
-          </nav>
+          {isSharedMode ? (
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-slate-400">
+              <i className="fas fa-lock text-xs"></i>
+              <span className="text-xs font-bold uppercase tracking-widest">성적표 조회 전용 모드</span>
+            </div>
+          ) : (
+            <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              {[
+                { id: Step.SETUP, label: '정보 설정', icon: 'fa-cog' },
+                { id: Step.INPUT, label: '답안 입력', icon: 'fa-edit' },
+                { id: Step.REPORT, label: '결과 리포트', icon: 'fa-chart-pie' }
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  disabled={currentStep < s.id}
+                  onClick={() => setCurrentStep(s.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                    currentStep === s.id 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-700'
+                  } ${currentStep < s.id ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  <i className={`fas ${s.icon}`}></i> {s.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
       </header>
 
       <main className="flex-1 container mx-auto px-6 py-10">
-        {currentStep === Step.SETUP && (
+        {currentStep === Step.SETUP && !isSharedMode && (
           <QuestionSetup 
             questions={questions} 
             setQuestions={setQuestions} 
             onNext={() => setCurrentStep(Step.INPUT)} 
           />
         )}
-        {currentStep === Step.INPUT && (
+        {currentStep === Step.INPUT && !isSharedMode && (
           <StudentEntry 
             questions={questions} 
             studentInput={studentInput} 
@@ -193,13 +183,17 @@ const App: React.FC = () => {
             isShared={isSharedMode}
           />
         )}
+        {/* 공유 모드에서 부적절한 접근 시 강제 리포트 이동 */}
+        {isSharedMode && currentStep !== Step.REPORT && setCurrentStep(Step.REPORT)}
       </main>
 
-      <footer className="bg-slate-50 border-t border-slate-200 py-8 no-print">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <p className="text-slate-400 text-sm">© 2024 Smart Report Card Builder. All rights reserved.</p>
-        </div>
-      </footer>
+      {!isSharedMode && (
+        <footer className="bg-slate-50 border-t border-slate-200 py-8 no-print">
+          <div className="max-w-6xl mx-auto px-6 text-center">
+            <p className="text-slate-400 text-sm">© 2024 Smart Report Card Builder. All rights reserved.</p>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };

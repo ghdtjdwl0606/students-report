@@ -78,29 +78,23 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
 
   const copyShareLink = () => {
     try {
-      // 1. 데이터 최소화 (중복 정보 제거)
-      const minData = {
-        n: studentInput.name,
-        a: studentInput.answers,
-        // 문항 정보에서 [카테고리, 정답, 배점]만 추출
-        qr: questions.filter(q => q.section === 'Reading').map(q => [q.category, q.correctAnswer, q.points]),
-        ql: questions.filter(q => q.section === 'Listening').map(q => [q.category, q.correctAnswer, q.points])
-      };
+      // 1. 초압축 데이터 구조 (배열 기반)
+      // [이름, 읽기답안(36), 듣기답안(36), 읽기정보[카테고리,정답,배점][36], 듣기정보[카테고리,정답,배점][36]]
+      const rQs = questions.filter(q => q.section === 'Reading').sort((a,b) => a.number - b.number);
+      const lQs = questions.filter(q => q.section === 'Listening').sort((a,b) => a.number - b.number);
+
+      const ultraMinData = [
+        studentInput.name,
+        rQs.map(q => studentInput.answers[q.id] || ""),
+        lQs.map(q => studentInput.answers[q.id] || ""),
+        rQs.map(q => [q.category === "일반" ? "" : q.category, q.correctAnswer, q.points === 1 ? "" : q.points]),
+        lQs.map(q => [q.category === "일반" ? "" : q.category, q.correctAnswer, q.points === 1 ? "" : q.points])
+      ];
 
       // 2. LZ-String 압축
-      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(minData));
-      const url = `${window.location.origin}${window.location.pathname}#c=${compressed}`;
+      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(ultraMinData));
+      const url = `${window.location.origin}${window.location.pathname}#s=${compressed}`;
       
-      const doCopy = (text: string) => {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text)
-            .then(() => alert("성적표 링크가 압축되어 클립보드에 복사되었습니다."))
-            .catch(() => fallbackCopy(text));
-        } else {
-          fallbackCopy(text);
-        }
-      };
-
       const fallbackCopy = (text: string) => {
         const textArea = document.createElement("textarea");
         textArea.value = text;
@@ -108,14 +102,20 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
         textArea.select();
         try {
           document.execCommand('copy');
-          alert("압축된 성적표 링크가 복사되었습니다.");
+          alert("초단축 성적표 링크가 복사되었습니다.");
         } catch (err) {
           alert("링크 복사에 실패했습니다. URL을 직접 복사해 주세요.");
         }
         document.body.removeChild(textArea);
       };
 
-      doCopy(url);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url)
+          .then(() => alert("학생용 초단축 링크가 클립보드에 복사되었습니다."))
+          .catch(() => fallbackCopy(url));
+      } else {
+        fallbackCopy(url);
+      }
     } catch (err) {
       console.error("Link compression failed", err);
       alert("링크 생성 중 오류가 발생했습니다.");
