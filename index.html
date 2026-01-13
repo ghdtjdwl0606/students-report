@@ -34,5 +34,15 @@
 </head>
 <body>
     <div id="root"></div>
+    
+    <!-- 전역 process 객체 선언 (배포 환경에서의 API 키 참조 에러 방지) -->
+    <script>
+        if (typeof window !== 'undefined' && !window.process) {
+            window.process = { env: { API_KEY: "" } };
+        }
+    </script>
+    
+    <!-- 애플리케이션 진입점 실행 -->
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>

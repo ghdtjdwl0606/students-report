@@ -2,10 +2,16 @@
 import { GoogleGenAI } from "@google/genai";
 import { EvaluationResult } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-
 export const getStudentFeedback = async (result: EvaluationResult): Promise<string> => {
-  if (!process.env.API_KEY) return "AI 분석 기능을 사용하려면 API 키가 필요합니다.";
+  // 환경 변수 안전하게 가져오기
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) ? process.env.API_KEY : "";
+
+  if (!apiKey) {
+    return "AI 분석 기능을 사용하려면 API 키 설정이 필요합니다.";
+  }
+
+  // 호출 시점에 인스턴스 생성
+  const ai = new GoogleGenAI({ apiKey });
 
   const categorySummary = result.categoryResults
     .map(c => `${c.category}: ${c.percentage.toFixed(1)}% (${c.correctCount}/${c.totalQuestions})`)
@@ -29,6 +35,6 @@ export const getStudentFeedback = async (result: EvaluationResult): Promise<stri
     return response.text || "피드백을 생성할 수 없습니다.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "성적 분석 중 오류가 발생했습니다.";
+    return "성적 분석 중 오류가 발생했습니다. (API 키를 확인해주세요)";
   }
 };
