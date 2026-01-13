@@ -6,6 +6,49 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import LZString from 'lz-string';
 
+const CATEGORY_DESCRIPTIONS: Record<string, Record<string, string>> = {
+  Reading: {
+    "Author's Purpose": "글쓴이의 의도 문제. 글쓴이가 글을 통해 어떤 목적을 달성하려고 하는지 파악할 수 있는 능력을 물어봅니다.",
+    "Detail": "세부사항 문제. 주요 세부 사항과 주제를 뒷받침하는 주요 정보를 이해하고, 지문의 내용과 다른 정보를 찾을 수 있는지를 물어봅니다.",
+    "Inference": "추론 문제. 읽은 내용을 토대로 직접적으로 언급되지 않는 사항을 추론할 수 있는 능력을 물어봅니다.",
+    "Main Idea": "주제 문제. 글이 전체적으로 무엇에 관한 것인지를 파악할 수 있는 능력을 물어봅니다.",
+    "Vocabulary": "어휘 문제. 지문 속 어휘나 표현의 의미를 정확하게 파악할 수 있는지를 물어봅니다.",
+    "Pronoun Referent": "지시어 문제. 지시어가 무엇을 의미하는지를 정확하게 파악할 수 있는지를 물어봅니다.",
+    "Rhetorical Structure": "수사적 의도 문제. 특정 정보가 어떤 의도로 제시되었는지 파악할 수 있는지를 물어봅니다.",
+    "Sentence Insertion": "문장 삽입 문제. 글의 흐름을 잘 이해하고 있는지를 물어봅니다."
+  },
+  Listening: {
+    "Main Idea": "주제 문제. 들려주는 내용이 무엇에 관한 것인지를 파악할 수 있는지를 물어봅니다.",
+    "Detail": "세부사항 문제. 주제를 뒷받침하는 중요한 세부 사항을 정확히 파악할 수 있는지를 물어봅니다.",
+    "Inference": "추론 문제. 들은 내용을 토대로 직접적으로 언급되지 않은 사항을 추론할 수 있는 능력을 물어봅니다.",
+    "Prosody": "화자의 어조 문제. 화자가 특정 내용을 말할 때 태도에 따라 언급되지 않은 사항을 파악할 수 있는 능력을 물어봅니다.",
+    "Prediction": "예측 문제. 언급된 정보를 근거로 화자가 앞으로 할 일을 예측할 수 있는지를 물어봅니다.",
+    "Speaker's Purpose": "화자의 의도 문제. 화자가 어떤 목적을 달성하려 하는지 왜 해당 내용을 말하는지를 정확하게 파악할 수 있는지를 물어봅니다.",
+    "Rhetorical Device": "수사적 구조 문제. 화자가 특정 정보를 언급한 의도를 정확히 파악할 수 있는지를 물어봅니다."
+  }
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const sectionDesc = CATEGORY_DESCRIPTIONS[data.section] || {};
+    const description = sectionDesc[data.category.trim()] || "이 영역에 대한 학습 성취도를 나타냅니다.";
+
+    return (
+      <div className="bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border border-white/10 max-w-[280px]">
+        <div className="flex justify-between items-start gap-4 mb-2">
+          <p className="font-bold text-indigo-300 text-sm leading-tight">{data.category}</p>
+          <p className="text-xs font-black bg-indigo-500 px-2 py-0.5 rounded-lg">{Math.round(data.percentage)}%</p>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-300 font-medium">
+          {description}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 interface Props {
   questions: Question[];
   studentInput: StudentInput;
@@ -143,7 +186,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
-      {/* Top Actions: Students can ONLY download PDF */}
       <div className="flex flex-wrap justify-end gap-3 no-print px-4 md:px-0">
         {!isShared && (
           <button onClick={copyShareLink} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-5 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95">
@@ -196,7 +238,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={!isMobile} vertical={isMobile} />
                     <XAxis type={isMobile ? "category" : "number"} dataKey={isMobile ? "category" : undefined} hide={!isMobile} />
                     <YAxis type={isMobile ? "number" : "category"} dataKey={isMobile ? undefined : "category"} hide={isMobile} width={80} tick={{ fontSize: 11, fontWeight: 700, fill: '#64748b' }} />
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9', opacity: 0.4 }} />
                     <Bar dataKey="percentage" radius={isMobile ? [6, 6, 0, 0] : [0, 6, 6, 0]} barSize={20}>
                       {chart.data.map((entry: any, i: number) => (
                         <Cell key={`cell-${i}`} fill={entry.percentage >= 80 ? '#10b981' : entry.percentage >= 50 ? '#6366f1' : '#f43f5e'} />
@@ -211,7 +253,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
         </div>
       </div>
 
-      {/* Footer Reset Section: Hide completely if isShared is true */}
       {!isShared && (
         <div className="flex justify-center pt-8 no-print px-4">
           <button onClick={onReset} className="w-full md:w-auto bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform">
