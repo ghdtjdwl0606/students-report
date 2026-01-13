@@ -13,12 +13,16 @@ interface Props {
   isShared?: boolean;
 }
 
+// 유니코드 안전한 Base64 인코딩/디코딩 함수
+const utf8_to_b64 = (str: string) => window.btoa(unescape(encodeURIComponent(str)));
+
 const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShared }) => {
   const [result, setResult] = useState<EvaluationResult | null>(null);
-  const [aiFeedback, setAiFeedback] = useState<string>("AI 분석 중...");
+  const [aiFeedback, setAiFeedback] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [needsApiKey, setNeedsApiKey] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,10 +87,34 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
 
     setResult(finalResult);
     
-    // AI Feedback
-    const feedback = await getStudentFeedback(finalResult);
-    setAiFeedback(feedback);
-    setLoading(false);
+    // API 키 확인 및 피드백 생성
+    try {
+      if (typeof window !== 'undefined' && (window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey && !process.env.API_KEY) {
+          setNeedsApiKey(true);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const feedback = await getStudentFeedback(finalResult);
+      setAiFeedback(feedback);
+      setNeedsApiKey(false);
+    } catch (err) {
+      console.error("AI Feedback Error:", err);
+      setAiFeedback("AI 분석을 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectAI = async () => {
+    if (typeof window !== 'undefined' && (window as any).aistudio) {
+      await (window as any).aistudio.openSelectKey();
+      // 선택 후 재시도
+      calculateResults();
+    }
   };
 
   const downloadPdf = async () => {
@@ -117,13 +145,22 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
   };
 
   const copyShareLink = () => {
-    const data = { questions, studentInput };
-    const encoded = encodeURIComponent(btoa(JSON.stringify(data)));
-    const url = `${window.location.origin}${window.location.pathname}#report=${encoded}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-      alert("공유 가능한 개별 성적표 링크가 복사되었습니다.");
-    });
+    try {
+      const data = { questions, studentInput };
+      const jsonStr = JSON.stringify(data);
+      const encoded = encodeURIComponent(utf8_to_b64(jsonStr));
+      const url = `${window.location.origin}${window.location.pathname}#report=${encoded}`;
+      
+      navigator.clipboard.writeText(url).then(() => {
+        alert("공유 가능한 개별 성적표 링크가 복사되었습니다.");
+      }).catch(err => {
+        console.error("Link copy failed:", err);
+        alert("링크 복사에 실패했습니다. 주소창의 URL을 직접 복사해 주세요.");
+      });
+    } catch (err) {
+      console.error("Encoding failed:", err);
+      alert("데이터 인코딩 중 오류가 발생했습니다.");
+    }
   };
 
   if (!result) return <div className="p-20 text-center">결과를 계산하는 중...</div>;
@@ -266,14 +303,30 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
               <i className="fas fa-brain text-7xl md:text-8xl"></i>
             </div>
-            <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 flex items-center gap-2 relative z-10">
-              <i className="fas fa-sparkles text-amber-500"></i> AI 학습 리포트
-            </h3>
+            <div className="flex justify-between items-center mb-4 relative z-10">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2">
+                <i className="fas fa-sparkles text-amber-500"></i> AI 학습 리포트
+              </h3>
+              {needsApiKey && (
+                <button 
+                  onClick={handleConnectAI}
+                  className="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg font-bold hover:bg-amber-200 transition-colors"
+                >
+                  <i className="fas fa-key mr-1"></i> AI 연결하기
+                </button>
+              )}
+            </div>
             <div className="flex-1 bg-slate-50 rounded-2xl p-5 border border-slate-100 text-slate-700 leading-relaxed italic relative z-10 text-sm md:text-base overflow-y-auto min-h-[120px]">
               {loading ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
                   <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                   <div className="animate-pulse text-indigo-400 font-medium text-xs">AI 데이터 분석 중...</div>
+                </div>
+              ) : needsApiKey ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-4">
+                  <i className="fas fa-lock text-2xl mb-2"></i>
+                  <p>AI 피드백을 위해 상단의 'AI 연결하기' 버튼을 눌러주세요.</p>
+                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-500 underline mt-2">API 키 발급 및 유료 프로젝트 가이드</a>
                 </div>
               ) : (
                 `"${aiFeedback}"`

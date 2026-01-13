@@ -35,8 +35,8 @@
 <body>
     <div id="root"></div>
     
-    <!-- 브라우저 환경에서 process.env 참조 에러 방지 (기존 값을 덮어쓰지 않음) -->
     <script>
+        // process shim: 환경 변수가 주입되지 않은 경우를 대비하면서도 기존 주입된 값을 유지
         window.process = window.process || { env: {} };
     </script>
     

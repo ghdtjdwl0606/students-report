@@ -11,6 +11,9 @@ enum Step {
   REPORT
 }
 
+// 유니코드 안전한 Base64 디코딩 함수
+const b64_to_utf8 = (str: string) => decodeURIComponent(escape(window.atob(str)));
+
 const generateFixedQuestions = (): Question[] => {
   const reading: Question[] = Array.from({ length: 36 }, (_, i) => ({
     id: `R-${i + 1}`,
@@ -42,24 +45,31 @@ const App: React.FC = () => {
     answers: {}
   });
 
-  // Check for shared data in URL
+  // URL에서 공유 데이터 확인
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash && hash.startsWith('#report=')) {
-      try {
-        const encodedData = hash.replace('#report=', '');
-        const decodedData = JSON.parse(atob(decodeURIComponent(encodedData)));
-        
-        if (decodedData.questions && decodedData.studentInput) {
-          setQuestions(decodedData.questions);
-          setStudentInput(decodedData.studentInput);
-          setCurrentStep(Step.REPORT);
-          setIsSharedMode(true);
+    const checkHash = () => {
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#report=')) {
+        try {
+          const encodedData = hash.replace('#report=', '');
+          const decodedStr = b64_to_utf8(decodeURIComponent(encodedData));
+          const decodedData = JSON.parse(decodedStr);
+          
+          if (decodedData.questions && decodedData.studentInput) {
+            setQuestions(decodedData.questions);
+            setStudentInput(decodedData.studentInput);
+            setCurrentStep(Step.REPORT);
+            setIsSharedMode(true);
+          }
+        } catch (e) {
+          console.error("Failed to decode share link", e);
         }
-      } catch (e) {
-        console.error("Failed to decode share link", e);
       }
-    }
+    };
+
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
   }, []);
 
   const handleReset = () => {
@@ -67,6 +77,9 @@ const App: React.FC = () => {
       window.location.hash = '';
       setIsSharedMode(false);
       setCurrentStep(Step.SETUP);
+      // 데이터 초기화
+      setQuestions(generateFixedQuestions());
+      setStudentInput({ name: '', answers: {} });
     } else {
       setStudentInput({ name: '', answers: {} });
       setCurrentStep(Step.INPUT);
