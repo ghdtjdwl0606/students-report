@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { EvaluationResult, Question, StudentInput } from '../types';
-import { getStudentFeedback } from '../services/geminiService';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -17,12 +16,8 @@ const utf8_to_b64 = (str: string) => window.btoa(unescape(encodeURIComponent(str
 
 const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShared }) => {
   const [result, setResult] = useState<EvaluationResult | null>(null);
-  const [aiFeedback, setAiFeedback] = useState<string>("");
-  const [loadingAi, setLoadingAi] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
-  const [needsApiKey, setNeedsApiKey] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string>("");
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,52 +75,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
     };
 
     setResult(finalResult);
-    
-    // 성적 계산 후 즉시 AI 분석 시도
-    requestAiFeedback(finalResult);
-  };
-
-  const requestAiFeedback = async (data: EvaluationResult) => {
-    setLoadingAi(true);
-    setErrorMessage("");
-    setNeedsApiKey(false);
-
-    try {
-      // 1. AI Studio 환경에서 키가 이미 선택되었는지 확인
-      if (typeof window !== 'undefined' && (window as any).aistudio) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (!hasKey && !process.env.API_KEY) {
-          setNeedsApiKey(true);
-          setLoadingAi(false);
-          return;
-        }
-      }
-
-      // 2. 피드백 요청
-      const feedback = await getStudentFeedback(data);
-      setAiFeedback(feedback);
-    } catch (err: any) {
-      console.error("AI Analysis Error:", err);
-      if (err.message === "API_KEY_MISSING" || err.message === "MODEL_NOT_FOUND" || err.message === "INVALID_API_KEY") {
-        setNeedsApiKey(true);
-      } else {
-        setErrorMessage("분석 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
-      }
-    } finally {
-      setLoadingAi(false);
-    }
-  };
-
-  const handleConnectAI = async () => {
-    if (typeof window !== 'undefined' && (window as any).aistudio) {
-      try {
-        await (window as any).aistudio.openSelectKey();
-        // 키 선택 창이 닫힌 후 (성공 가정) 재시도
-        if (result) requestAiFeedback(result);
-      } catch (e) {
-        console.error("Key selection failed", e);
-      }
-    }
   };
 
   const copyShareLink = () => {
@@ -248,62 +197,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
               </div>
             </div>
           ))}
-        </div>
-
-        {/* AI Analysis Card */}
-        <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <i className="fas fa-brain text-8xl text-indigo-900"></i>
-          </div>
-          <div className="flex justify-between items-center mb-6 relative z-10">
-            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-              <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 text-amber-600">
-                <i className="fas fa-sparkles text-sm"></i>
-              </span>
-              AI 학습 인사이트
-            </h3>
-            {!loadingAi && (needsApiKey || errorMessage) && (
-              <button onClick={handleConnectAI} className="text-xs bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold hover:bg-indigo-100 transition-colors">
-                <i className="fas fa-key mr-2"></i> 다시 연결하기
-              </button>
-            )}
-          </div>
-
-          <div className="bg-slate-50 rounded-2xl p-6 md:p-8 border border-slate-100 text-slate-700 leading-relaxed min-h-[140px] flex items-center justify-center relative z-10">
-            {loadingAi ? (
-              <div className="flex flex-col items-center gap-4 py-6">
-                <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-bounce"></div>
-                </div>
-                <p className="text-sm text-indigo-500 font-bold tracking-tight">성적 데이터를 정밀 분석하고 있습니다...</p>
-              </div>
-            ) : needsApiKey ? (
-              <div className="text-center space-y-4 max-w-sm">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
-                  <i className="fas fa-lock text-slate-300"></i>
-                </div>
-                <div>
-                  <p className="text-slate-500 font-medium mb-1">AI 분석 기능이 비활성화되어 있습니다.</p>
-                  <button onClick={handleConnectAI} className="text-indigo-600 font-black underline decoration-2 underline-offset-4 hover:text-indigo-800">지금 연결하여 피드백 받기</button>
-                </div>
-                <p className="text-[10px] text-slate-400">사용 중인 AI Studio의 유료 프로젝트 키가 필요할 수 있습니다.</p>
-              </div>
-            ) : errorMessage ? (
-              <div className="text-center py-6">
-                <i className="fas fa-exclamation-circle text-rose-400 text-2xl mb-2"></i>
-                <p className="text-slate-500 text-sm font-medium">{errorMessage}</p>
-                <button onClick={() => requestAiFeedback(result)} className="mt-4 text-xs font-bold text-indigo-600 border border-indigo-200 px-4 py-2 rounded-lg hover:bg-indigo-50">재시도</button>
-              </div>
-            ) : (
-              <p className="text-lg md:text-xl font-medium text-slate-600 leading-relaxed italic text-center md:text-left">
-                <i className="fas fa-quote-left text-slate-200 text-2xl mr-4 align-top"></i>
-                {aiFeedback || "분석 결과가 여기에 표시됩니다."}
-                <i className="fas fa-quote-right text-slate-200 text-2xl ml-4 align-bottom"></i>
-              </p>
-            )}
-          </div>
         </div>
       </div>
 
