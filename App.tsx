@@ -35,22 +35,31 @@ const generateFixedQuestions = (): Question[] => {
 };
 
 const App: React.FC = () => {
-  const [isSharedMode, setIsSharedMode] = useState(false);
-  const [currentStep, setCurrentStep] = useState<Step>(Step.SETUP);
+  // 초기 상태부터 공유 모드 여부를 판단하여 깜빡임 방지
+  const [isSharedMode, setIsSharedMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.hash.startsWith('#v3=') || window.location.hash.startsWith('#s=');
+    }
+    return false;
+  });
+  
+  const [currentStep, setCurrentStep] = useState<Step>(isSharedMode ? Step.REPORT : Step.SETUP);
   const [questions, setQuestions] = useState<Question[]>(generateFixedQuestions());
   const [studentInput, setStudentInput] = useState<StudentInput>({
     name: '',
     answers: {}
   });
 
-  // URL에서 공유 데이터 확인 및 복원 (즉시 감지 로직)
+  // 데이터 복원 로직
   useEffect(() => {
     const checkHash = () => {
       const hash = window.location.hash;
-      if (!hash) return;
+      if (!hash) {
+        if (isSharedMode) window.location.reload(); // 해시가 없어지면 초기화
+        return;
+      }
 
       try {
-        // 초압축 방식 (#v3=)
         if (hash.startsWith('#v3=')) {
           const compressed = hash.replace('#v3=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
@@ -96,8 +105,6 @@ const App: React.FC = () => {
           setStudentInput({ name, answers });
           setIsSharedMode(true);
           setCurrentStep(Step.REPORT);
-        } else if (hash.startsWith('#s=')) {
-          // 구버전 (#s=) 대응 생략 또는 동일하게 처리
         }
       } catch (e) {
         console.error("Link Error", e);
@@ -107,7 +114,7 @@ const App: React.FC = () => {
     checkHash();
     window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
-  }, []);
+  }, [isSharedMode]);
 
   const handleReset = () => {
     if (isSharedMode) {
@@ -134,9 +141,9 @@ const App: React.FC = () => {
           </div>
           
           {isSharedMode ? (
-            <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl">
-              <i className="fas fa-shield-check text-xs text-indigo-400"></i>
-              <span className="text-[10px] font-bold uppercase tracking-widest">성적표 조회 전용 모드</span>
+            <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl border border-slate-700">
+              <i className="fas fa-lock text-xs text-indigo-400"></i>
+              <span className="text-[10px] font-bold uppercase tracking-widest">성적표 조회 모드 (수정 불가)</span>
             </div>
           ) : (
             <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">

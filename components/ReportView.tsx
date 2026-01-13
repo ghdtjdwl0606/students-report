@@ -78,7 +78,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
 
   const copyShareLink = () => {
     try {
-      // 1. 문자열 기반 초압축 포맷 (JSON 불필요 문자 제거)
       const rQs = questions.filter(q => q.section === 'Reading').sort((a,b) => a.number - b.number);
       const lQs = questions.filter(q => q.section === 'Listening').sort((a,b) => a.number - b.number);
 
@@ -90,7 +89,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
         lQs.map(q => `${q.category === "일반" ? "" : q.category}*${q.correctAnswer}*${q.points === 1 ? "" : q.points}`).join('^')
       ].join('|');
 
-      // 2. LZ-String 압축
       const compressed = LZString.compressToEncodedURIComponent(pack);
       const url = `${window.location.origin}${window.location.pathname}#v3=${compressed}`;
       
@@ -103,20 +101,19 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
           document.execCommand('copy');
           alert("단축 링크가 복사되었습니다.");
         } catch (err) {
-          alert("링크 복사에 실패했습니다.");
+          alert("링크 복사 실패");
         }
         document.body.removeChild(textArea);
       };
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url)
-          .then(() => alert("학생용 단축 링크가 클립보드에 복사되었습니다. (정보 수정 불가)"))
+          .then(() => alert("학생용 단축 링크가 복사되었습니다. (조회 전용)"))
           .catch(() => fallbackCopy(url));
       } else {
         fallbackCopy(url);
       }
     } catch (err) {
-      console.error(err);
       alert("링크 생성 실패");
     }
   };
@@ -131,7 +128,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${studentInput.name}_성적표.pdf`);
+      pdf.save(`${studentInput.name}_성적분석표.pdf`);
     } catch (e) {
       alert("PDF 생성 오류");
     } finally {
@@ -139,37 +136,38 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
     }
   };
 
-  if (!result) return <div className="p-20 text-center font-bold text-slate-400">데이터 로딩 중...</div>;
+  if (!result) return <div className="p-20 text-center font-bold text-slate-400">데이터를 불러오는 중입니다...</div>;
 
   const readingResults = result.categoryResults.filter((r: any) => r.section === 'Reading');
   const listeningResults = result.categoryResults.filter((r: any) => r.section === 'Listening');
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
-      {!isShared && (
-        <div className="flex flex-wrap justify-end gap-3 no-print px-4 md:px-0">
+      {/* Top Actions: Students can ONLY download PDF */}
+      <div className="flex flex-wrap justify-end gap-3 no-print px-4 md:px-0">
+        {!isShared && (
           <button onClick={copyShareLink} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-5 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95">
-            <i className="fas fa-link text-indigo-500"></i> 정보 수정 불가 링크 복사
+            <i className="fas fa-link text-indigo-500"></i> 조회용 링크 복사
           </button>
-          <button onClick={downloadPdf} disabled={isGeneratingPdf} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 disabled:opacity-50">
-            {isGeneratingPdf ? <i className="fas fa-spinner animate-spin"></i> : <><i className="fas fa-file-pdf"></i> PDF 저장</>}
-          </button>
-        </div>
-      )}
+        )}
+        <button onClick={downloadPdf} disabled={isGeneratingPdf} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 disabled:opacity-50">
+          {isGeneratingPdf ? <i className="fas fa-spinner animate-spin"></i> : <><i className="fas fa-file-pdf"></i> PDF 저장하기</>}
+        </button>
+      </div>
 
       <div ref={reportRef} className="space-y-6 p-4 md:p-0">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white shadow-xl relative overflow-hidden">
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white shadow-xl relative overflow-hidden border border-slate-700">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl"></div>
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="text-center md:text-left">
-              <span className="inline-block bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">Final Report Card</span>
+              <span className="inline-block bg-indigo-500/20 backdrop-blur-md px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4 border border-indigo-500/30">Official Student Report</span>
               <h2 className="text-4xl font-black">{result.studentName} 학생</h2>
               <div className="mt-4 flex gap-4">
-                <div className="bg-white/10 px-4 py-2 rounded-xl border border-white/10">
+                <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">
                   <span className="text-[10px] uppercase font-bold opacity-60 block">Reading</span>
                   <span className="text-xl font-bold">{result.scoreR}</span>
                 </div>
-                <div className="bg-white/10 px-4 py-2 rounded-xl border border-white/10">
+                <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">
                   <span className="text-[10px] uppercase font-bold opacity-60 block">Listening</span>
                   <span className="text-xl font-bold">{result.scoreL}</span>
                 </div>
@@ -213,11 +211,14 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
         </div>
       </div>
 
-      <div className="flex justify-center pt-8 no-print px-4">
-        <button onClick={onReset} className="w-full md:w-auto bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform">
-          {isShared ? "나의 성적표 새로 만들기" : "처음으로 돌아가기"}
-        </button>
-      </div>
+      {/* Footer Reset Section: Hide completely if isShared is true */}
+      {!isShared && (
+        <div className="flex justify-center pt-8 no-print px-4">
+          <button onClick={onReset} className="w-full md:w-auto bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform">
+            처음으로 돌아가기
+          </button>
+        </div>
+      )}
     </div>
   );
 };
