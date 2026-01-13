@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { EvaluationResult, Question, StudentInput } from '../types';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import LZString from 'lz-string';
 
 interface Props {
   questions: Question[];
@@ -11,8 +12,6 @@ interface Props {
   onReset: () => void;
   isShared?: boolean;
 }
-
-const utf8_to_b64 = (str: string) => window.btoa(unescape(encodeURIComponent(str)));
 
 const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShared }) => {
   const [result, setResult] = useState<EvaluationResult | null>(null);
@@ -78,30 +77,48 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
   };
 
   const copyShareLink = () => {
-    const data = { questions, studentInput };
-    const encoded = encodeURIComponent(utf8_to_b64(JSON.stringify(data)));
-    const url = `${window.location.origin}${window.location.pathname}#report=${encoded}`;
-    
-    const fallbackCopy = (text: string) => {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        alert("링크가 복사되었습니다.");
-      } catch (err) {
-        alert("링크 복사에 실패했습니다. URL을 직접 복사해 주세요.");
-      }
-      document.body.removeChild(textArea);
-    };
+    try {
+      // 1. 데이터 최소화 (중복 정보 제거)
+      const minData = {
+        n: studentInput.name,
+        a: studentInput.answers,
+        // 문항 정보에서 [카테고리, 정답, 배점]만 추출
+        qr: questions.filter(q => q.section === 'Reading').map(q => [q.category, q.correctAnswer, q.points]),
+        ql: questions.filter(q => q.section === 'Listening').map(q => [q.category, q.correctAnswer, q.points])
+      };
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url)
-        .then(() => alert("성적표 링크가 클립보드에 복사되었습니다."))
-        .catch(() => fallbackCopy(url));
-    } else {
-      fallbackCopy(url);
+      // 2. LZ-String 압축
+      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(minData));
+      const url = `${window.location.origin}${window.location.pathname}#c=${compressed}`;
+      
+      const doCopy = (text: string) => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text)
+            .then(() => alert("성적표 링크가 압축되어 클립보드에 복사되었습니다."))
+            .catch(() => fallbackCopy(text));
+        } else {
+          fallbackCopy(text);
+        }
+      };
+
+      const fallbackCopy = (text: string) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          alert("압축된 성적표 링크가 복사되었습니다.");
+        } catch (err) {
+          alert("링크 복사에 실패했습니다. URL을 직접 복사해 주세요.");
+        }
+        document.body.removeChild(textArea);
+      };
+
+      doCopy(url);
+    } catch (err) {
+      console.error("Link compression failed", err);
+      alert("링크 생성 중 오류가 발생했습니다.");
     }
   };
 
@@ -134,7 +151,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
       {!isShared && (
         <div className="flex flex-wrap justify-end gap-3 no-print px-4 md:px-0">
           <button onClick={copyShareLink} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-5 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95">
-            <i className="fas fa-link text-indigo-500"></i> 학생용 링크 복사
+            <i className="fas fa-bolt text-amber-500"></i> 단축 링크 복사
           </button>
           <button onClick={downloadPdf} disabled={isGeneratingPdf} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 disabled:opacity-50">
             {isGeneratingPdf ? <i className="fas fa-spinner animate-spin"></i> : <><i className="fas fa-file-pdf"></i> PDF 저장</>}

@@ -27,7 +27,8 @@
     "recharts": "https://esm.sh/recharts@^3.6.0",
     "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
     "jspdf": "https://esm.sh/jspdf@^2.5.1",
-    "html2canvas": "https://esm.sh/html2canvas@^1.4.1"
+    "html2canvas": "https://esm.sh/html2canvas@^1.4.1",
+    "lz-string": "https://esm.sh/lz-string@^1.5.0"
   }
 }
 </script>
@@ -36,11 +37,10 @@
     <div id="root"></div>
     
     <script>
-        // process shim: 환경 변수가 주입되지 않은 경우를 대비하면서도 기존 주입된 값을 유지
+        // process shim
         window.process = window.process || { env: {} };
     </script>
     
-    <!-- 애플리케이션 진입점 실행 -->
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

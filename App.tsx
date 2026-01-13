@@ -4,6 +4,7 @@ import { Question, StudentInput } from './types';
 import QuestionSetup from './components/QuestionSetup';
 import StudentEntry from './components/StudentEntry';
 import ReportView from './components/ReportView';
+import LZString from 'lz-string';
 
 enum Step {
   SETUP,
@@ -11,8 +12,14 @@ enum Step {
   REPORT
 }
 
-// 유니코드 안전한 Base64 디코딩 함수
-const b64_to_utf8 = (str: string) => decodeURIComponent(escape(window.atob(str)));
+// 유니코드 안전한 Base64 디코딩 함수 (이전 방식 호환용)
+const b64_to_utf8 = (str: string) => {
+  try {
+    return decodeURIComponent(escape(window.atob(str)));
+  } catch(e) {
+    return "";
+  }
+};
 
 const generateFixedQuestions = (): Question[] => {
   const reading: Question[] = Array.from({ length: 36 }, (_, i) => ({
@@ -45,12 +52,51 @@ const App: React.FC = () => {
     answers: {}
   });
 
-  // URL에서 공유 데이터 확인
+  // URL에서 공유 데이터 확인 및 복원
   useEffect(() => {
     const checkHash = () => {
       const hash = window.location.hash;
-      if (hash && hash.startsWith('#report=')) {
-        try {
+      if (!hash) return;
+
+      try {
+        // 방식 1: 압축 방식 (#c=)
+        if (hash.startsWith('#c=')) {
+          const compressed = hash.replace('#c=', '');
+          const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+          if (!decompressed) return;
+
+          const minData = JSON.parse(decompressed);
+          
+          // 최소화된 데이터를 전체 Question 객체로 복원
+          const restoredQuestions: Question[] = [
+            ...(minData.qr || []).map((q: any[], i: number) => ({
+              id: `R-${i + 1}`,
+              number: i + 1,
+              section: 'Reading',
+              category: q[0],
+              correctAnswer: q[1],
+              points: q[2]
+            })),
+            ...(minData.ql || []).map((q: any[], i: number) => ({
+              id: `L-${i + 1}`,
+              number: i + 1,
+              section: 'Listening',
+              category: q[0],
+              correctAnswer: q[1],
+              points: q[2]
+            }))
+          ];
+
+          setQuestions(restoredQuestions);
+          setStudentInput({
+            name: minData.n,
+            answers: minData.a
+          });
+          setCurrentStep(Step.REPORT);
+          setIsSharedMode(true);
+        } 
+        // 방식 2: 이전 방식 (#report=)
+        else if (hash.startsWith('#report=')) {
           const encodedData = hash.replace('#report=', '');
           const decodedStr = b64_to_utf8(decodeURIComponent(encodedData));
           const decodedData = JSON.parse(decodedStr);
@@ -61,9 +107,9 @@ const App: React.FC = () => {
             setCurrentStep(Step.REPORT);
             setIsSharedMode(true);
           }
-        } catch (e) {
-          console.error("Failed to decode share link", e);
         }
+      } catch (e) {
+        console.error("Failed to decode share link", e);
       }
     };
 
@@ -77,7 +123,6 @@ const App: React.FC = () => {
       window.location.hash = '';
       setIsSharedMode(false);
       setCurrentStep(Step.SETUP);
-      // 데이터 초기화
       setQuestions(generateFixedQuestions());
       setStudentInput({ name: '', answers: {} });
     } else {
@@ -88,7 +133,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Navigation Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
