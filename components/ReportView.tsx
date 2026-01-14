@@ -164,16 +164,64 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
   const downloadPdf = async () => {
     if (!reportRef.current) return;
     setIsGeneratingPdf(true);
+
     try {
-      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true, backgroundColor: '#f8fafc' });
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgData = canvas.toDataURL('image/png');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${studentInput.name}_성적분석표.pdf`);
+      // PDF 최적화를 위한 가상 고정폭 렌더링 전략
+      const originalElement = reportRef.current;
+      
+      // 1. 가상 컨테이너 생성 (A4 비율에 최적화된 너비)
+      const pdfWidth = 1200; // 고해상도 캡처를 위한 기준 너비
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = `${pdfWidth}px`;
+      container.style.backgroundColor = '#f8fafc';
+      document.body.appendChild(container);
+
+      // 2. 요소 복제 및 스타일 보정
+      const clone = originalElement.cloneNode(true) as HTMLDivElement;
+      clone.style.width = `${pdfWidth}px`;
+      clone.style.padding = '40px'; // PDF 여백 확보
+      container.appendChild(clone);
+
+      // 3. 고해상도 캡처 (기기 해상도 영향을 무시하기 위해 scale 상향)
+      const canvas = await html2canvas(clone, {
+        scale: 3, 
+        useCORS: true, 
+        backgroundColor: '#f8fafc',
+        logging: false,
+        onclone: (clonedDoc) => {
+          // 복제본 내의 SVG/차트가 올바르게 렌더링되도록 처리할 수 있음
+        }
+      });
+
+      // 4. 가상 컨테이너 제거
+      document.body.removeChild(container);
+
+      // 5. PDF 생성
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // 6. 이미지 비율 계산하여 페이지에 안착 (여백 10mm)
+      const margin = 10;
+      const contentWidth = pageWidth - (margin * 2);
+      const contentHeight = (canvas.height * contentWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight);
+      pdf.save(`${studentInput.name}_성적분석리포트.pdf`);
+      
     } catch (e) {
-      alert("PDF 생성 오류");
+      console.error(e);
+      alert("PDF 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIsGeneratingPdf(false);
     }
