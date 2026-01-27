@@ -31,20 +31,22 @@ const generateFixedQuestions = (): Question[] => {
     points: 1.00,
   }));
 
-  const speaking: Question[] = Array.from({ length: 4 }, (_, i) => ({
+  const speakingCategories = ["Picture Description", "Organization", "Language", "Fluency"];
+  const speaking: Question[] = speakingCategories.map((cat, i) => ({
     id: `S-${i + 1}`,
     number: i + 1,
     section: 'Speaking',
-    category: `Task ${i + 1}`,
+    category: cat,
     correctAnswer: 'N/A',
     points: 4.00,
   }));
 
-  const writing: Question[] = Array.from({ length: 4 }, (_, i) => ({
+  const writingCategories = ["Personalized Connection", "Context", "Organization", "Language"];
+  const writing: Question[] = writingCategories.map((cat, i) => ({
     id: `W-${i + 1}`,
     number: i + 1,
     section: 'Writing',
-    category: `Task ${i + 1}`,
+    category: cat,
     correctAnswer: 'N/A',
     points: 5.00,
   }));
