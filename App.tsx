@@ -57,7 +57,8 @@ const generateFixedQuestions = (): Question[] => {
 const App: React.FC = () => {
   const [isSharedMode, setIsSharedMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      return window.location.hash.startsWith('#v4=') || window.location.hash.startsWith('#v5=');
+      const hash = window.location.hash;
+      return hash.startsWith('#v4=') || hash.startsWith('#v5=') || hash.startsWith('#v6=');
     }
     return false;
   });
@@ -75,73 +76,75 @@ const App: React.FC = () => {
       if (!hash) return;
 
       try {
-        if (hash.startsWith('#v5=')) {
-          const compressed = hash.replace('#v5=', '');
+        if (hash.startsWith('#v6=')) {
+          const compressed = hash.replace('#v6=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
 
           const parts = decompressed.split('|');
-          const [name, rAns, lAns, sAns, wAns, rConf, lConf, sConf, wConf] = parts;
+          const [name, rAnsT, lAnsT, sAnsE, wAnsE, maskHex] = parts;
+          const customConfs = parts.slice(6);
           
           const defaultQs = generateFixedQuestions();
           const restoredQs: Question[] = [];
           const answers: Record<string, string> = {};
+          const mask = parseInt(maskHex, 16);
 
-          const restoreSection = (sec: string, ansStr: string, confStr: string, sectionName: any) => {
-            const isRL = sec === 'R' || sec === 'L';
-            const secDefaults = defaultQs.filter(q => q.section === sectionName);
-            
-            // 답변 복원
-            if (isRL) {
-              ansStr.split('').forEach((char, i) => { answers[`${sec}-${i+1}`] = char; });
-            } else {
-              ansStr.split('^').forEach((val, i) => { answers[`${sec}-${i+1}`] = val; });
-            }
+          // R/L 답안 복원 (패딩)
+          const rA = rAnsT.padEnd(36, ' ');
+          const lA = lAnsT.padEnd(36, ' ');
+          rA.split('').forEach((c, i) => answers[`R-${i+1}`] = c === ' ' ? '' : c);
+          lA.split('').forEach((c, i) => answers[`L-${i+1}`] = c === ' ' ? '' : c);
 
-            // 설정 복원
-            if (confStr === 'D') {
+          // S/W 답안 복원 (Char Map: a=0, b=0.5...)
+          const decodeScore = (char: string) => (char.charCodeAt(0) - 97) / 2;
+          sAnsE.split('').forEach((c, i) => answers[`S-${i+1}`] = decodeScore(c).toString());
+          wAnsE.split('').forEach((c, i) => answers[`W-${i+1}`] = decodeScore(c).toString());
+
+          // 설정 복원 (비트마스크: bit0=R, bit1=L, bit2=S, bit3=W)
+          let customIdx = 0;
+          ['Reading', 'Listening', 'Speaking', 'Writing'].forEach((sn, bit) => {
+            const isDefault = (mask >> bit) & 1;
+            const secDefaults = defaultQs.filter(q => q.section === sn);
+            if (isDefault) {
               restoredQs.push(...secDefaults);
             } else {
+              const confStr = customConfs[customIdx++];
               const confArr = confStr.split('^').map(c => c.split('*'));
               secDefaults.forEach((def, i) => {
-                const custom = confArr[i] || [];
-                restoredQs.push({
-                  ...def,
-                  category: custom[0] || def.category,
-                  correctAnswer: custom[1] || def.correctAnswer,
-                  points: custom[2] ? Number(custom[2]) : def.points
-                });
+                const c = confArr[i] || [];
+                restoredQs.push({ ...def, category: c[0] || def.category, correctAnswer: c[1] || def.correctAnswer, points: c[2] ? Number(c[2]) : def.points });
               });
             }
-          };
-
-          restoreSection('R', rAns, rConf, 'Reading');
-          restoreSection('L', lAns, lConf, 'Listening');
-          restoreSection('S', sAns, sConf, 'Speaking');
-          restoreSection('W', wAns, wConf, 'Writing');
+          });
 
           setQuestions(restoredQs);
           setStudentInput({ name, answers });
           setIsSharedMode(true);
           setCurrentStep(Step.REPORT);
-        } else if (hash.startsWith('#v4=')) {
-          // 구버전(v4) 호환성 유지
-          const compressed = hash.replace('#v4=', '');
+        } else if (hash.startsWith('#v5=')) {
+          // v5 호환
+          const compressed = hash.replace('#v5=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
-          const [name, rA, lA, sA, wA, rC, lC, sC, wC] = decompressed.split('|');
+          const parts = decompressed.split('|');
+          const [name, rAns, lAns, sAns, wAns, rConf, lConf, sConf, wConf] = parts;
+          const defaultQs = generateFixedQuestions();
+          const restoredQs: Question[] = [];
           const answers: Record<string, string> = {};
-          const restored: Question[] = [];
-          const proc = (sec: string, a: string, c: string, sn: any) => {
-            a.split('^').forEach((v, i) => answers[`${sec}-${i+1}`] = v);
-            c.split('^').forEach((v, i) => {
-              const [cat, key, pts] = v.split('*');
-              restored.push({ id: `${sec}-${i+1}`, number: i+1, section: sn, category: cat || "일반", correctAnswer: key || "", points: pts ? Number(pts) : 1 });
-            });
+          const restore = (sec: string, ans: string, conf: string, sn: any) => {
+            if (sec === 'R' || sec === 'L') ans.split('').forEach((c, i) => answers[`${sec}-${i+1}`] = c === ' ' ? "" : c);
+            else ans.split('^').forEach((v, i) => answers[`${sec}-${i+1}`] = v);
+            const defs = defaultQs.filter(q => q.section === sn);
+            if (conf === 'D') restoredQs.push(...defs);
+            else {
+              const arr = conf.split('^').map(c => c.split('*'));
+              defs.forEach((d, i) => { const c = arr[i] || []; restoredQs.push({ ...d, category: c[0] || d.category, correctAnswer: c[1] || d.correctAnswer, points: c[2] ? Number(c[2]) : d.points }); });
+            }
           };
-          proc('R', rA, rC, 'Reading'); proc('L', lA, lC, 'Listening');
-          proc('S', sA, sC, 'Speaking'); proc('W', wA, wC, 'Writing');
-          setQuestions(restored); setStudentInput({ name, answers }); setIsSharedMode(true); setCurrentStep(Step.REPORT);
+          restore('R', rAns, rConf, 'Reading'); restore('L', lAns, lConf, 'Listening');
+          restore('S', sAns, sConf, 'Speaking'); restore('W', wAns, wConf, 'Writing');
+          setQuestions(restoredQs); setStudentInput({ name, answers }); setIsSharedMode(true); setCurrentStep(Step.REPORT);
         }
       } catch (e) { console.error("Restore Error", e); }
     };
