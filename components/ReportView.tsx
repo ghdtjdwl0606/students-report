@@ -30,21 +30,13 @@ const CATEGORY_DESCRIPTIONS: Record<string, Record<string, string>> = {
     "Picture Description": "주어진 요구에 따라 제시된 그림을 모두 적절하게 묘사했는지를 평가합니다.",
     "Organization": "그림에 어울리는 내용이 하나의 이야기로 자연스럽게 연결되어 있는지를 평가합니다.",
     "Language": "표현 및 어휘가 적절하게 사용되었는지를 평가합니다.",
-    "Fluency": "발화하는 목소리의 유창성과 전달력을 평가합니다.",
-    "Task 1": "독립형 말하기. 일상적인 주제에 대해 자신의 의견을 논리적으로 말하는 능력을 측정합니다.",
-    "Task 2": "통합형(캠퍼스). 공지문이나 대화를 듣고 요약하여 말하는 능력을 측정합니다.",
-    "Task 3": "통합형(강의). 학술적 강의를 듣고 주요 포인트를 설명하는 능력을 측정합니다.",
-    "Task 4": "통합형(강의 요약). 강의의 세부 내용을 구조적으로 전달하는 능력을 측정합니다."
+    "Fluency": "발화하는 목소리의 유창성과 전달력을 평가합니다."
   },
   Writing: {
     "Personalized Connection": "주어진 prompt에 알맞은 opinion statement를 제시했는지 평가합니다.",
     "Context": "opinion statement를 뒷받침하는 세부 설명을 알맞게 제시했는지를 평가합니다.",
     "Organization": "글의 흐름상 자연스럽게 연결되어 있는지를 평가합니다.",
-    "Language": "표현/어휘 사용의 적절성과 문법의 정확성을 평가합니다.",
-    "Task 1": "문장 구성 및 문법적 정확성. 주어진 정보를 바탕으로 문장을 올바르게 구성하고 수정하는 능력을 측정합니다.",
-    "Task 2": "문장 결합 및 흐름. 두 개 이상의 문장을 논리적으로 결합하여 글의 흐름을 매끄럽게 만드는 능력을 측정합니다.",
-    "Task 3": "단락 구성 및 논리. 주제에 맞춰 단락을 구성하고 세부 내용을 논리적으로 전개하는 능력을 측정합니다.",
-    "Task 4": "종합적 에세이 작성. 특정 주제에 대해 자신의 주장을 전개하고 적절한 예시를 들어 글을 완성하는 능력입니다."
+    "Language": "표현/어휘 사용의 적절성과 문법의 정확성을 평가합니다."
   }
 };
 
@@ -159,20 +151,45 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
   const copyShareLink = () => {
     try {
       const getSec = (s: string) => questions.filter(q => q.section === s).sort((a,b) => a.number - b.number);
+      
+      // 고효율 압축을 위한 기본값 체크 및 직렬화 로직
+      const serializeConfig = (sectionName: string, defaultCat: string | string[], defaultPts: number) => {
+        const qs = getSec(sectionName);
+        const isReading = sectionName === 'Reading';
+        const isListening = sectionName === 'Listening';
+        
+        let isDefault = true;
+        const configStr = qs.map((q, i) => {
+          const dCat = Array.isArray(defaultCat) ? defaultCat[i] : defaultCat;
+          const cat = q.category === dCat ? "" : q.category;
+          const key = (isReading || isListening) ? q.correctAnswer : "N/A";
+          const pts = q.points === defaultPts ? "" : q.points.toString();
+          
+          if (cat !== "" || (isReading || isListening ? key !== "" : false) || pts !== "") isDefault = false;
+          return `${cat}*${key === "N/A" ? "" : key}*${pts}`;
+        }).join('^');
+
+        return isDefault ? "D" : configStr;
+      };
+
+      const rConf = serializeConfig('Reading', '일반', 1.0);
+      const lConf = serializeConfig('Listening', '일반', 1.0);
+      const sConf = serializeConfig('Speaking', ["Picture Description", "Organization", "Language", "Fluency"], 4.0);
+      const wConf = serializeConfig('Writing', ["Personalized Connection", "Context", "Organization", "Language"], 5.0);
+
+      const rAns = getSec('Reading').map(q => studentInput.answers[q.id] || " ").join('');
+      const lAns = getSec('Listening').map(q => studentInput.answers[q.id] || " ").join('');
+      const sAns = getSec('Speaking').map(q => studentInput.answers[q.id] || "").join('^');
+      const wAns = getSec('Writing').map(q => studentInput.answers[q.id] || "").join('^');
+
       const pack = [
         studentInput.name,
-        getSec('Reading').map(q => studentInput.answers[q.id] || "").join('^'),
-        getSec('Listening').map(q => studentInput.answers[q.id] || "").join('^'),
-        getSec('Speaking').map(q => studentInput.answers[q.id] || "").join('^'),
-        getSec('Writing').map(q => studentInput.answers[q.id] || "").join('^'),
-        getSec('Reading').map(q => `${q.category}*${q.correctAnswer}*${q.points}`).join('^'),
-        getSec('Listening').map(q => `${q.category}*${q.correctAnswer}*${q.points}`).join('^'),
-        getSec('Speaking').map(q => `${q.category}*N/A*${q.points}`).join('^'),
-        getSec('Writing').map(q => `${q.category}*N/A*${q.points}`).join('^')
+        rAns, lAns, sAns, wAns,
+        rConf, lConf, sConf, wConf
       ].join('|');
 
-      const url = `${window.location.origin}${window.location.pathname}#v4=${LZString.compressToEncodedURIComponent(pack)}`;
-      navigator.clipboard.writeText(url).then(() => alert("학생용 조회 링크가 복사되었습니다."));
+      const url = `${window.location.origin}${window.location.pathname}#v5=${LZString.compressToEncodedURIComponent(pack)}`;
+      navigator.clipboard.writeText(url).then(() => alert("학생용 단축 링크가 복사되었습니다."));
     } catch (e) { alert("링크 생성 실패"); }
   };
 
