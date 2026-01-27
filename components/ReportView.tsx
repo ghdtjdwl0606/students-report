@@ -25,6 +25,18 @@ const CATEGORY_DESCRIPTIONS: Record<string, Record<string, string>> = {
     "Prediction": "예측 문제. 언급된 정보를 근거로 화자가 앞으로 할 일을 예측할 수 있는지를 물어봅니다.",
     "Speaker's Purpose": "화자의 의도 문제. 화자가 어떤 목적을 달성하려 하는지 왜 해당 내용을 말하는지를 정확하게 파악할 수 있는지를 물어봅니다.",
     "Rhetorical Device": "수사적 구조 문제. 화자가 특정 정보를 언급한 의도를 정확히 파악할 수 있는지를 물어봅니다."
+  },
+  Speaking: {
+    "Task 1": "독립형 말하기. 일상적인 주제에 대해 자신의 의견을 논리적으로 말하는 능력을 측정합니다.",
+    "Task 2": "통합형(캠퍼스). 공지문이나 대화를 듣고 요약하여 말하는 능력을 측정합니다.",
+    "Task 3": "통합형(강의). 학술적 강의를 듣고 주요 포인트를 설명하는 능력을 측정합니다.",
+    "Task 4": "통합형(강의 요약). 강의의 세부 내용을 구조적으로 전달하는 능력을 측정합니다."
+  },
+  Writing: {
+    "Task 1": "문장 구성 및 문법적 정확성. 주어진 정보를 바탕으로 문장을 올바르게 구성하고 수정하는 능력을 측정합니다.",
+    "Task 2": "문장 결합 및 흐름. 두 개 이상의 문장을 논리적으로 결합하여 글의 흐름을 매끄럽게 만드는 능력을 측정합니다.",
+    "Task 3": "단락 구성 및 논리. 주제에 맞춰 단락을 구성하고 세부 내용을 논리적으로 전개하는 능력을 측정합니다.",
+    "Task 4": "종합적 에세이 작성. 특정 주제에 대해 자신의 주장을 전개하고 적절한 예시를 들어 글을 완성하는 능력입니다."
   }
 };
 
@@ -32,7 +44,7 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const sectionDesc = CATEGORY_DESCRIPTIONS[data.section] || {};
-    const description = sectionDesc[data.category.trim()] || "이 영역에 대한 학습 성취도를 나타냅니다.";
+    const description = sectionDesc[data.category.trim()] || "해당 영역의 성취 성향을 분석한 데이터입니다.";
 
     return (
       <div className="bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border border-white/10 max-w-[280px]">
@@ -40,9 +52,7 @@ const CustomTooltip = ({ active, payload }: any) => {
           <p className="font-bold text-indigo-300 text-sm leading-tight">{data.category}</p>
           <p className="text-xs font-black bg-indigo-500 px-2 py-0.5 rounded-lg">{Math.round(data.percentage)}%</p>
         </div>
-        <p className="text-[11px] leading-relaxed text-slate-300 font-medium">
-          {description}
-        </p>
+        <p className="text-[11px] leading-relaxed text-slate-300 font-medium">{description}</p>
       </div>
     );
   }
@@ -70,228 +80,186 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
   }, [questions, studentInput]);
 
   const calculateResults = async () => {
-    let earnedR = 0;
-    let earnedL = 0;
+    let earnedR = 0, earnedL = 0, earnedS = 0, earnedW = 0;
+    let maxS = 0, maxW = 0;
     const isCorrect: Record<string, boolean> = {};
-    const categoriesMap: Record<string, { total: number; correct: number }> = {};
+    const categoriesMap: Record<string, { total: number; correct: number; earnedPoints: number; maxPoints: number }> = {};
 
     questions.forEach(q => {
-      const studentAns = (studentInput.answers[q.id] || '').trim().toLowerCase();
-      const correctAns = (q.correctAnswer || '').trim().toLowerCase();
-      const correct = studentAns !== '' && studentAns === correctAns;
-      
-      isCorrect[q.id] = correct;
-      if (correct) {
-        if (q.section === 'Reading') earnedR += q.points;
-        else earnedL += q.points;
-      }
-
+      const studentAns = (studentInput.answers[q.id] || '').trim();
       const fullCategory = `${q.section}-${q.category}`;
       if (!categoriesMap[fullCategory]) {
-        categoriesMap[fullCategory] = { total: 0, correct: 0 };
+        categoriesMap[fullCategory] = { total: 0, correct: 0, earnedPoints: 0, maxPoints: 0 };
       }
-      categoriesMap[fullCategory].total += 1;
-      if (correct) categoriesMap[fullCategory].correct += 1;
+
+      if (q.section === 'Reading' || q.section === 'Listening') {
+        const correct = studentAns.toLowerCase() === q.correctAnswer.trim().toLowerCase() && studentAns !== '';
+        isCorrect[q.id] = correct;
+        categoriesMap[fullCategory].total += 1;
+        if (correct) {
+          categoriesMap[fullCategory].correct += 1;
+          if (q.section === 'Reading') earnedR += q.points;
+          else earnedL += q.points;
+        }
+      } else {
+        const earned = parseFloat(studentAns) || 0;
+        categoriesMap[fullCategory].earnedPoints += earned;
+        categoriesMap[fullCategory].maxPoints += q.points;
+        if (q.section === 'Speaking') {
+          earnedS += earned;
+          maxS += q.points;
+        } else {
+          earnedW += earned;
+          maxW += q.points;
+        }
+      }
     });
 
     const categoryResults = Object.keys(categoriesMap).map(key => {
       const [section, catName] = key.split('-');
+      const data = categoriesMap[key];
+      const percentage = (section === 'Reading' || section === 'Listening') 
+        ? (data.correct / data.total) * 100 
+        : (data.earnedPoints / (data.maxPoints || 1)) * 100;
+
       return {
         category: catName,
-        section: section as 'Reading' | 'Listening',
-        totalQuestions: categoriesMap[key].total,
-        correctCount: categoriesMap[key].correct,
-        percentage: (categoriesMap[key].correct / categoriesMap[key].total) * 100
+        section: section as any,
+        totalQuestions: data.total,
+        correctCount: data.correct,
+        earnedPoints: data.earnedPoints,
+        maxPoints: data.maxPoints,
+        percentage: percentage || 0
       };
     });
 
-    const finalResult: EvaluationResult = {
+    setResult({
       studentName: studentInput.name,
-      totalScore: Math.floor(140 + earnedR) + Math.floor(140 + earnedL),
-      maxScore: 320,
+      totalScoreRL: Math.floor(140 + earnedR) + Math.floor(140 + earnedL),
+      totalScoreSW: earnedS + earnedW,
+      maxScoreRL: 320,
+      maxScoreSW: maxS + maxW,
       scoreR: Math.floor(140 + earnedR),
       scoreL: Math.floor(140 + earnedL),
-      actualEarnedPoints: earnedR + earnedL,
+      scoreS: earnedS,
+      scoreW: earnedW,
       categoryResults,
       isCorrect
-    };
-
-    setResult(finalResult);
+    });
   };
 
   const copyShareLink = () => {
     try {
-      const rQs = questions.filter(q => q.section === 'Reading').sort((a,b) => a.number - b.number);
-      const lQs = questions.filter(q => q.section === 'Listening').sort((a,b) => a.number - b.number);
-
+      const getSec = (s: string) => questions.filter(q => q.section === s).sort((a,b) => a.number - b.number);
       const pack = [
         studentInput.name,
-        rQs.map(q => studentInput.answers[q.id] || "").join('^'),
-        lQs.map(q => studentInput.answers[q.id] || "").join('^'),
-        rQs.map(q => `${q.category === "일반" ? "" : q.category}*${q.correctAnswer}*${q.points === 1 ? "" : q.points}`).join('^'),
-        lQs.map(q => `${q.category === "일반" ? "" : q.category}*${q.correctAnswer}*${q.points === 1 ? "" : q.points}`).join('^')
+        getSec('Reading').map(q => studentInput.answers[q.id] || "").join('^'),
+        getSec('Listening').map(q => studentInput.answers[q.id] || "").join('^'),
+        getSec('Speaking').map(q => studentInput.answers[q.id] || "").join('^'),
+        getSec('Writing').map(q => studentInput.answers[q.id] || "").join('^'),
+        getSec('Reading').map(q => `${q.category}*${q.correctAnswer}*${q.points}`).join('^'),
+        getSec('Listening').map(q => `${q.category}*${q.correctAnswer}*${q.points}`).join('^'),
+        getSec('Speaking').map(q => `${q.category}*N/A*${q.points}`).join('^'),
+        getSec('Writing').map(q => `${q.category}*N/A*${q.points}`).join('^')
       ].join('|');
 
-      const compressed = LZString.compressToEncodedURIComponent(pack);
-      const url = `${window.location.origin}${window.location.pathname}#v3=${compressed}`;
-      
-      const fallbackCopy = (text: string) => {
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          alert("단축 링크가 복사되었습니다.");
-        } catch (err) {
-          alert("링크 복사 실패");
-        }
-        document.body.removeChild(textArea);
-      };
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url)
-          .then(() => alert("학생용 단축 링크가 복사되었습니다. (조회 전용)"))
-          .catch(() => fallbackCopy(url));
-      } else {
-        fallbackCopy(url);
-      }
-    } catch (err) {
-      alert("링크 생성 실패");
-    }
+      const url = `${window.location.origin}${window.location.pathname}#v4=${LZString.compressToEncodedURIComponent(pack)}`;
+      navigator.clipboard.writeText(url).then(() => alert("학생용 조회 링크가 복사되었습니다."));
+    } catch (e) { alert("링크 생성 실패"); }
   };
 
   const downloadPdf = async () => {
     if (!reportRef.current) return;
     setIsGeneratingPdf(true);
-
     try {
-      // PDF 최적화를 위한 가상 고정폭 렌더링 전략
-      const originalElement = reportRef.current;
-      
-      // 1. 가상 컨테이너 생성 (A4 비율에 최적화된 너비)
-      const pdfWidth = 1200; // 고해상도 캡처를 위한 기준 너비
+      const original = reportRef.current;
+      const pdfWidth = 1200;
       const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = `${pdfWidth}px`;
-      container.style.backgroundColor = '#f8fafc';
+      container.style.cssText = `position:absolute; left:-9999px; top:0; width:${pdfWidth}px; background:#f8fafc;`;
       document.body.appendChild(container);
-
-      // 2. 요소 복제 및 스타일 보정
-      const clone = originalElement.cloneNode(true) as HTMLDivElement;
+      const clone = original.cloneNode(true) as HTMLDivElement;
       clone.style.width = `${pdfWidth}px`;
-      clone.style.padding = '40px'; // PDF 여백 확보
+      clone.style.padding = '40px';
       container.appendChild(clone);
-
-      // 3. 고해상도 캡처 (기기 해상도 영향을 무시하기 위해 scale 상향)
-      const canvas = await html2canvas(clone, {
-        scale: 3, 
-        useCORS: true, 
-        backgroundColor: '#f8fafc',
-        logging: false,
-        onclone: (clonedDoc) => {
-          // 복제본 내의 SVG/차트가 올바르게 렌더링되도록 처리할 수 있음
-        }
-      });
-
-      // 4. 가상 컨테이너 제거
+      const canvas = await html2canvas(clone, { scale: 3, useCORS: true, backgroundColor: '#f8fafc' });
       document.body.removeChild(container);
-
-      // 5. PDF 생성
-      const pdf = new jsPDF({
-        orientation: 'p',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
-
+      const pdf = new jsPDF('p', 'mm', 'a4');
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
       const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      
-      // 6. 이미지 비율 계산하여 페이지에 안착 (여백 10mm)
-      const margin = 10;
-      const contentWidth = pageWidth - (margin * 2);
+      const contentWidth = pageWidth - 20;
       const contentHeight = (canvas.height * contentWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight);
-      pdf.save(`${studentInput.name}_성적분석리포트.pdf`);
-      
-    } catch (e) {
-      console.error(e);
-      alert("PDF 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setIsGeneratingPdf(false);
-    }
+      pdf.addImage(imgData, 'JPEG', 10, 10, contentWidth, contentHeight);
+      pdf.save(`${studentInput.name}_종합성적표.pdf`);
+    } catch (e) { alert("PDF 생성 오류"); } finally { setIsGeneratingPdf(false); }
   };
 
-  if (!result) return <div className="p-20 text-center font-bold text-slate-400">데이터를 불러오는 중입니다...</div>;
+  if (!result) return <div className="p-20 text-center font-bold text-slate-400">Loading...</div>;
 
-  const readingResults = result.categoryResults.filter((r: any) => r.section === 'Reading');
-  const listeningResults = result.categoryResults.filter((r: any) => r.section === 'Listening');
+  const chartGroups = [
+    { results: result.categoryResults.filter(r => r.section === 'Reading'), title: "Reading 성취도", icon: "fa-book-open", color: "text-blue-500" },
+    { results: result.categoryResults.filter(r => r.section === 'Listening'), title: "Listening 성취도", icon: "fa-headphones", color: "text-emerald-500" },
+    { results: result.categoryResults.filter(r => r.section === 'Speaking'), title: "Speaking 성취도", icon: "fa-microphone", color: "text-purple-500" },
+    { results: result.categoryResults.filter(r => r.section === 'Writing'), title: "Writing 성취도", icon: "fa-pen-fancy", color: "text-amber-500" }
+  ].filter(g => g.results.length > 0);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
       <div className="flex flex-wrap justify-end gap-3 no-print px-4 md:px-0">
-        {!isShared && (
-          <button onClick={copyShareLink} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-5 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95">
-            <i className="fas fa-link text-indigo-500"></i> 조회용 링크 복사
-          </button>
-        )}
-        <button onClick={downloadPdf} disabled={isGeneratingPdf} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 disabled:opacity-50">
-          {isGeneratingPdf ? <i className="fas fa-spinner animate-spin"></i> : <><i className="fas fa-file-pdf"></i> PDF 저장하기</>}
+        {!isShared && <button onClick={copyShareLink} className="bg-white text-slate-700 border border-slate-200 px-5 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95"><i className="fas fa-link text-indigo-500 mr-2"></i>조회 링크 복사</button>}
+        <button onClick={downloadPdf} disabled={isGeneratingPdf} className="bg-indigo-600 text-white px-5 py-3 rounded-xl font-bold shadow-md active:scale-95 disabled:opacity-50">
+          {isGeneratingPdf ? <i className="fas fa-spinner animate-spin"></i> : <><i className="fas fa-file-pdf mr-2"></i>PDF 저장</>}
         </button>
       </div>
 
-      <div ref={reportRef} className="space-y-6 p-4 md:p-0">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white shadow-xl relative overflow-hidden border border-slate-700">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl"></div>
-          <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+      <div ref={reportRef} className="space-y-6">
+        <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 text-white shadow-xl border border-slate-700">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="text-center md:text-left">
-              <span className="inline-block bg-indigo-500/20 backdrop-blur-md px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4 border border-indigo-500/30">Official Student Report</span>
+              <span className="bg-indigo-500/20 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4 inline-block border border-indigo-500/30">Comprehensive Performance Report</span>
               <h2 className="text-4xl font-black">{result.studentName} 학생</h2>
-              <div className="mt-4 flex gap-4">
-                <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">
-                  <span className="text-[10px] uppercase font-bold opacity-60 block">Reading</span>
-                  <span className="text-xl font-bold">{result.scoreR}</span>
-                </div>
-                <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">
-                  <span className="text-[10px] uppercase font-bold opacity-60 block">Listening</span>
-                  <span className="text-xl font-bold">{result.scoreL}</span>
-                </div>
+              <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
+                {['Reading', 'Listening', 'Speaking', 'Writing'].map(s => (
+                  <div key={s} className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">
+                    <span className="text-[10px] uppercase font-bold opacity-60 block">{s}</span>
+                    <span className="text-lg font-bold">{(result as any)[`score${s.charAt(0)}`]}</span>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="bg-white text-slate-900 rounded-[2rem] p-8 text-center shadow-2xl min-w-[220px]">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Score</span>
-              <div className="text-6xl font-black text-indigo-600 mt-2 tracking-tighter">{result.totalScore}</div>
-              <div className="mt-2 text-slate-400 text-xs font-bold border-t border-slate-100 pt-2">MAX 320</div>
+            
+            <div className="flex gap-6">
+              <div className="bg-white text-slate-900 rounded-[2rem] p-6 text-center shadow-2xl min-w-[160px]">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">RL Total Score</span>
+                <div className="text-5xl font-black text-indigo-600 mt-1">{result.totalScoreRL}</div>
+                <div className="text-[10px] font-bold text-slate-400 border-t mt-2 pt-2">MAX {result.maxScoreRL}</div>
+              </div>
+              <div className="bg-indigo-600 text-white rounded-[2rem] p-6 text-center shadow-2xl min-w-[160px]">
+                <span className="text-[10px] font-bold text-indigo-200 uppercase">SW Total Score</span>
+                <div className="text-5xl font-black mt-1">{result.totalScoreSW}</div>
+                <div className="text-[10px] font-bold text-indigo-300 border-t border-indigo-400/30 mt-2 pt-2">MAX {result.maxScoreSW}</div>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[ 
-            { data: readingResults, title: "Reading", icon: "fa-book-open", color: "text-blue-500" },
-            { data: listeningResults, title: "Listening", icon: "fa-headphones", color: "text-emerald-500" }
-          ].map((chart, idx) => (
+          {chartGroups.map((chart, idx) => (
             <div key={idx} className="bg-white rounded-[2rem] p-6 border border-slate-200 shadow-sm">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
-                <i className={`fas ${chart.icon} ${chart.color}`}></i> {chart.title} 영역 성취도
+                <i className={`fas ${chart.icon} ${chart.color}`}></i> {chart.title}
               </h3>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chart.data} layout={isMobile ? "horizontal" : "vertical"} margin={{ left: isMobile ? 0 : 20, right: 30 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={!isMobile} vertical={isMobile} />
+                  <BarChart data={chart.results} layout={isMobile ? "horizontal" : "vertical"}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={isMobile} horizontal={!isMobile} />
                     <XAxis type={isMobile ? "category" : "number"} dataKey={isMobile ? "category" : undefined} hide={!isMobile} />
-                    <YAxis type={isMobile ? "number" : "category"} dataKey={isMobile ? undefined : "category"} hide={isMobile} width={80} tick={{ fontSize: 11, fontWeight: 700, fill: '#64748b' }} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9', opacity: 0.4 }} />
-                    <Bar dataKey="percentage" radius={isMobile ? [6, 6, 0, 0] : [0, 6, 6, 0]} barSize={20}>
-                      {chart.data.map((entry: any, i: number) => (
+                    <YAxis type={isMobile ? "number" : "category"} dataKey={isMobile ? undefined : "category"} hide={isMobile} width={80} tick={{ fontSize: 10, fontWeight: 700 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="percentage" barSize={18} radius={[0, 6, 6, 0]}>
+                      {chart.results.map((entry, i) => (
                         <Cell key={`cell-${i}`} fill={entry.percentage >= 80 ? '#10b981' : entry.percentage >= 50 ? '#6366f1' : '#f43f5e'} />
                       ))}
-                      <LabelList dataKey="percentage" position={isMobile ? "top" : "right"} formatter={(v: number) => `${Math.round(v)}%`} style={{ fontSize: '10px', fontWeight: 'bold', fill: '#94a3b8' }} />
+                      <LabelList dataKey="percentage" position={isMobile ? "top" : "right"} formatter={(v: any) => `${Math.round(v)}%`} style={{ fontSize: '9px', fontWeight: 'bold' }} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -303,9 +271,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
 
       {!isShared && (
         <div className="flex justify-center pt-8 no-print px-4">
-          <button onClick={onReset} className="w-full md:w-auto bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform">
-            처음으로 돌아가기
-          </button>
+          <button onClick={onReset} className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform">처음으로 돌아가기</button>
         </div>
       )}
     </div>

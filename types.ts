@@ -2,7 +2,7 @@
 export interface Question {
   id: string;
   number: number;
-  section: 'Reading' | 'Listening';
+  section: 'Reading' | 'Listening' | 'Speaking' | 'Writing';
   category: string;
   correctAnswer: string;
   points: number;
@@ -18,16 +18,21 @@ export interface CategoryResult {
   totalQuestions: number;
   correctCount: number;
   percentage: number;
-  section?: 'Reading' | 'Listening';
+  section?: 'Reading' | 'Listening' | 'Speaking' | 'Writing';
+  earnedPoints?: number;
+  maxPoints?: number;
 }
 
 export interface EvaluationResult {
   studentName: string;
-  totalScore: number;
-  maxScore: number;
+  totalScoreRL: number;
+  totalScoreSW: number;
+  maxScoreRL: number;
+  maxScoreSW: number;
   scoreR: number;
   scoreL: number;
-  actualEarnedPoints: number;
+  scoreS: number;
+  scoreW: number;
   categoryResults: CategoryResult[];
   isCorrect: Record<string, boolean>;
 }

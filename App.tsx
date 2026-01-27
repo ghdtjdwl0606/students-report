@@ -31,14 +31,31 @@ const generateFixedQuestions = (): Question[] => {
     points: 1.00,
   }));
 
-  return [...reading, ...listening];
+  const speaking: Question[] = Array.from({ length: 4 }, (_, i) => ({
+    id: `S-${i + 1}`,
+    number: i + 1,
+    section: 'Speaking',
+    category: `Task ${i + 1}`,
+    correctAnswer: 'N/A',
+    points: 4.00,
+  }));
+
+  const writing: Question[] = Array.from({ length: 4 }, (_, i) => ({
+    id: `W-${i + 1}`,
+    number: i + 1,
+    section: 'Writing',
+    category: `Task ${i + 1}`,
+    correctAnswer: 'N/A',
+    points: 5.00,
+  }));
+
+  return [...reading, ...listening, ...speaking, ...writing];
 };
 
 const App: React.FC = () => {
-  // 초기 상태부터 공유 모드 여부를 판단하여 깜빡임 방지
   const [isSharedMode, setIsSharedMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      return window.location.hash.startsWith('#v3=') || window.location.hash.startsWith('#s=');
+      return window.location.hash.startsWith('#v4=');
     }
     return false;
   });
@@ -50,56 +67,43 @@ const App: React.FC = () => {
     answers: {}
   });
 
-  // 데이터 복원 로직
   useEffect(() => {
     const checkHash = () => {
       const hash = window.location.hash;
-      if (!hash) {
-        if (isSharedMode) window.location.reload(); // 해시가 없어지면 초기화
-        return;
-      }
+      if (!hash) return;
 
       try {
-        if (hash.startsWith('#v3=')) {
-          const compressed = hash.replace('#v3=', '');
+        if (hash.startsWith('#v4=')) {
+          const compressed = hash.replace('#v4=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
 
-          const [name, rAnsStr, lAnsStr, rConfStr, lConfStr] = decompressed.split('|');
+          const [name, rAnsStr, lAnsStr, sAnsStr, wAnsStr, rConf, lConf, sConf, wConf] = decompressed.split('|');
           
-          const rAnswers = rAnsStr.split('^');
-          const lAnswers = lAnsStr.split('^');
-          const rConfigs = rConfStr.split('^').map(c => c.split('*'));
-          const lConfigs = lConfStr.split('^').map(c => c.split('*'));
-          
-          const answers: Record<string, string> = {};
           const restoredQs: Question[] = [];
+          const answers: Record<string, string> = {};
 
-          rAnswers.forEach((ans, i) => {
-            const id = `R-${i + 1}`;
-            answers[id] = ans;
-            restoredQs.push({
-              id,
-              number: i + 1,
-              section: 'Reading',
-              category: rConfigs[i][0] || "일반",
-              correctAnswer: rConfigs[i][1],
-              points: rConfigs[i][2] === "" ? 1 : Number(rConfigs[i][2])
+          const processSection = (sec: string, ansStr: string, confStr: string, sectionName: any) => {
+            const ansArr = ansStr.split('^');
+            const confArr = confStr.split('^').map(c => c.split('*'));
+            ansArr.forEach((ans, i) => {
+              const id = `${sec}-${i + 1}`;
+              answers[id] = ans;
+              restoredQs.push({
+                id,
+                number: i + 1,
+                section: sectionName,
+                category: confArr[i][0] || "일반",
+                correctAnswer: confArr[i][1] || "",
+                points: confArr[i][2] === "" ? 1 : Number(confArr[i][2])
+              });
             });
-          });
+          };
 
-          lAnswers.forEach((ans, i) => {
-            const id = `L-${i + 1}`;
-            answers[id] = ans;
-            restoredQs.push({
-              id,
-              number: i + 1,
-              section: 'Listening',
-              category: lConfigs[i][0] || "일반",
-              correctAnswer: lConfigs[i][1],
-              points: lConfigs[i][2] === "" ? 1 : Number(lConfigs[i][2])
-            });
-          });
+          processSection('R', rAnsStr, rConf, 'Reading');
+          processSection('L', lAnsStr, lConf, 'Listening');
+          processSection('S', sAnsStr, sConf, 'Speaking');
+          processSection('W', wAnsStr, wConf, 'Writing');
 
           setQuestions(restoredQs);
           setStudentInput({ name, answers });
@@ -114,7 +118,7 @@ const App: React.FC = () => {
     checkHash();
     window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
-  }, [isSharedMode]);
+  }, []);
 
   const handleReset = () => {
     if (isSharedMode) {
