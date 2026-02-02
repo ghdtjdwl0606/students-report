@@ -79,7 +79,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
     return () => window.removeEventListener('resize', handleResize);
   }, [questions, studentInput]);
 
-  const calculateResults = async () => {
+  const calculateResults = () => {
     let earnedR = 0, earnedL = 0, earnedS = 0, earnedW = 0;
     let maxS = 0, maxW = 0;
     const isCorrect: Record<string, boolean> = {};
@@ -93,24 +93,28 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
       }
 
       if (q.section === 'Reading' || q.section === 'Listening') {
-        const correct = studentAns.toLowerCase() === q.correctAnswer.trim().toLowerCase() && studentAns !== '';
+        const correctAns = (q.correctAnswer || '').trim();
+        const correct = studentAns !== '' && studentAns.toLowerCase() === correctAns.toLowerCase();
+        
         isCorrect[q.id] = correct;
         categoriesMap[fullCategory].total += 1;
         if (correct) {
           categoriesMap[fullCategory].correct += 1;
-          if (q.section === 'Reading') earnedR += q.points;
-          else earnedL += q.points;
+          const pts = Number(q.points) || 0;
+          if (q.section === 'Reading') earnedR += pts;
+          else earnedL += pts;
         }
       } else {
         const earned = parseFloat(studentAns) || 0;
+        const maxPts = Number(q.points) || 0;
         categoriesMap[fullCategory].earnedPoints += earned;
-        categoriesMap[fullCategory].maxPoints += q.points;
+        categoriesMap[fullCategory].maxPoints += maxPts;
         if (q.section === 'Speaking') {
           earnedS += earned;
-          maxS += q.points;
+          maxS += maxPts;
         } else {
           earnedW += earned;
-          maxW += q.points;
+          maxW += maxPts;
         }
       }
     });
@@ -119,7 +123,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
       const [section, catName] = key.split('-');
       const data = categoriesMap[key];
       const percentage = (section === 'Reading' || section === 'Listening') 
-        ? (data.correct / data.total) * 100 
+        ? (data.correct / (data.total || 1)) * 100 
         : (data.earnedPoints / (data.maxPoints || 1)) * 100;
 
       return {
@@ -152,7 +156,6 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
     try {
       const getSec = (s: string) => questions.filter(q => q.section === s).sort((a,b) => a.number - b.number);
       
-      // v7 전략: 안정성 우선 (구분자 사용, 인코딩)
       const rAns = getSec('Reading').map(q => studentInput.answers[q.id] || "").join('^');
       const lAns = getSec('Listening').map(q => studentInput.answers[q.id] || "").join('^');
       const sAns = getSec('Speaking').map(q => studentInput.answers[q.id] || "").join('^');
