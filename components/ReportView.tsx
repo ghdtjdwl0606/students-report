@@ -152,20 +152,12 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
     try {
       const getSec = (s: string) => questions.filter(q => q.section === s).sort((a,b) => a.number - b.number);
       
-      // v6 최적화 전략
-      // 1. R/L 답안 트레일링 공백 제거
-      const rAnsT = getSec('Reading').map(q => studentInput.answers[q.id] || " ").join('').replace(/\s+$/, '');
-      const lAnsT = getSec('Listening').map(q => studentInput.answers[q.id] || " ").join('').replace(/\s+$/, '');
-      
-      // 2. S/W 점수 1글자 맵핑 (0.0=a, 0.5=b, 1.0=c ...)
-      const encodeScore = (scoreStr: string) => {
-        const s = parseFloat(scoreStr) || 0;
-        return String.fromCharCode(97 + Math.min(Math.round(s * 2), 25));
-      };
-      const sAnsE = getSec('Speaking').map(q => encodeScore(studentInput.answers[q.id])).join('');
-      const wAnsE = getSec('Writing').map(q => encodeScore(studentInput.answers[q.id])).join('');
+      // v7 전략: 안정성 우선 (구분자 사용, 인코딩)
+      const rAns = getSec('Reading').map(q => studentInput.answers[q.id] || "").join('^');
+      const lAns = getSec('Listening').map(q => studentInput.answers[q.id] || "").join('^');
+      const sAns = getSec('Speaking').map(q => studentInput.answers[q.id] || "").join('^');
+      const wAns = getSec('Writing').map(q => studentInput.answers[q.id] || "").join('^');
 
-      // 3. 설정값 체크 및 비트마스크 생성
       const defaultConfigs = {
         Reading: { cat: '일반', pts: 1.0 },
         Listening: { cat: '일반', pts: 1.0 },
@@ -173,7 +165,7 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
         Writing: { cat: ["Personalized Connection", "Context", "Organization", "Language"], pts: 5.0 }
       };
 
-      let mask = 0; // bit 0:R, 1:L, 2:S, 3:W (1 if default)
+      let mask = 0;
       const customConfStrs: string[] = [];
 
       ['Reading', 'Listening', 'Speaking', 'Writing'].forEach((sn, bit) => {
@@ -194,14 +186,14 @@ const ReportView: React.FC<Props> = ({ questions, studentInput, onReset, isShare
       });
 
       const pack = [
-        studentInput.name,
-        rAnsT, lAnsT, sAnsE, wAnsE,
+        encodeURIComponent(studentInput.name),
+        rAns, lAns, sAns, wAns,
         mask.toString(16),
         ...customConfStrs
       ].join('|');
 
-      const url = `${window.location.origin}${window.location.pathname}#v6=${LZString.compressToEncodedURIComponent(pack)}`;
-      navigator.clipboard.writeText(url).then(() => alert("학생용 초단축 링크가 복사되었습니다."));
+      const url = `${window.location.origin}${window.location.pathname}#v7=${LZString.compressToEncodedURIComponent(pack)}`;
+      navigator.clipboard.writeText(url).then(() => alert("학생용 조회 링크가 복사되었습니다."));
     } catch (e) { alert("링크 생성 실패"); }
   };
 

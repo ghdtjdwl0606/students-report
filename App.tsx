@@ -58,7 +58,7 @@ const App: React.FC = () => {
   const [isSharedMode, setIsSharedMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
-      return hash.startsWith('#v4=') || hash.startsWith('#v5=') || hash.startsWith('#v6=');
+      return hash.startsWith('#v4=') || hash.startsWith('#v5=') || hash.startsWith('#v6=') || hash.startsWith('#v7=');
     }
     return false;
   });
@@ -76,13 +76,13 @@ const App: React.FC = () => {
       if (!hash) return;
 
       try {
-        if (hash.startsWith('#v6=')) {
-          const compressed = hash.replace('#v6=', '');
+        if (hash.startsWith('#v7=')) {
+          const compressed = hash.replace('#v7=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
 
           const parts = decompressed.split('|');
-          const [name, rAnsT, lAnsT, sAnsE, wAnsE, maskHex] = parts;
+          const [encName, rAnsStr, lAnsStr, sAnsStr, wAnsStr, maskHex] = parts;
           const customConfs = parts.slice(6);
           
           const defaultQs = generateFixedQuestions();
@@ -90,18 +90,14 @@ const App: React.FC = () => {
           const answers: Record<string, string> = {};
           const mask = parseInt(maskHex, 16);
 
-          // R/L 답안 복원 (패딩)
-          const rA = rAnsT.padEnd(36, ' ');
-          const lA = lAnsT.padEnd(36, ' ');
-          rA.split('').forEach((c, i) => answers[`R-${i+1}`] = c === ' ' ? '' : c);
-          lA.split('').forEach((c, i) => answers[`L-${i+1}`] = c === ' ' ? '' : c);
+          // 데이터 복원
+          const name = decodeURIComponent(encName);
+          const restoreAns = (sec: string, str: string) => {
+            str.split('^').forEach((v, i) => { if (v) answers[`${sec}-${i+1}`] = v; });
+          };
+          restoreAns('R', rAnsStr); restoreAns('L', lAnsStr);
+          restoreAns('S', sAnsStr); restoreAns('W', wAnsStr);
 
-          // S/W 답안 복원 (Char Map: a=0, b=0.5...)
-          const decodeScore = (char: string) => (char.charCodeAt(0) - 97) / 2;
-          sAnsE.split('').forEach((c, i) => answers[`S-${i+1}`] = decodeScore(c).toString());
-          wAnsE.split('').forEach((c, i) => answers[`W-${i+1}`] = decodeScore(c).toString());
-
-          // 설정 복원 (비트마스크: bit0=R, bit1=L, bit2=S, bit3=W)
           let customIdx = 0;
           ['Reading', 'Listening', 'Speaking', 'Writing'].forEach((sn, bit) => {
             const isDefault = (mask >> bit) & 1;
@@ -113,7 +109,12 @@ const App: React.FC = () => {
               const confArr = confStr.split('^').map(c => c.split('*'));
               secDefaults.forEach((def, i) => {
                 const c = confArr[i] || [];
-                restoredQs.push({ ...def, category: c[0] || def.category, correctAnswer: c[1] || def.correctAnswer, points: c[2] ? Number(c[2]) : def.points });
+                restoredQs.push({ 
+                  ...def, 
+                  category: c[0] || def.category, 
+                  correctAnswer: c[1] || def.correctAnswer, 
+                  points: (c[2] !== undefined && c[2] !== "") ? Number(c[2]) : def.points 
+                });
               });
             }
           });
@@ -122,29 +123,23 @@ const App: React.FC = () => {
           setStudentInput({ name, answers });
           setIsSharedMode(true);
           setCurrentStep(Step.REPORT);
-        } else if (hash.startsWith('#v5=')) {
-          // v5 호환
-          const compressed = hash.replace('#v5=', '');
+        } else if (hash.startsWith('#v6=')) {
+          // v6 호환성 (긴급 복구용)
+          const compressed = hash.replace('#v6=', '');
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (!decompressed) return;
           const parts = decompressed.split('|');
-          const [name, rAns, lAns, sAns, wAns, rConf, lConf, sConf, wConf] = parts;
-          const defaultQs = generateFixedQuestions();
-          const restoredQs: Question[] = [];
+          const [name, rAnsT, lAnsT, sAnsE, wAnsE, maskHex] = parts;
           const answers: Record<string, string> = {};
-          const restore = (sec: string, ans: string, conf: string, sn: any) => {
-            if (sec === 'R' || sec === 'L') ans.split('').forEach((c, i) => answers[`${sec}-${i+1}`] = c === ' ' ? "" : c);
-            else ans.split('^').forEach((v, i) => answers[`${sec}-${i+1}`] = v);
-            const defs = defaultQs.filter(q => q.section === sn);
-            if (conf === 'D') restoredQs.push(...defs);
-            else {
-              const arr = conf.split('^').map(c => c.split('*'));
-              defs.forEach((d, i) => { const c = arr[i] || []; restoredQs.push({ ...d, category: c[0] || d.category, correctAnswer: c[1] || d.correctAnswer, points: c[2] ? Number(c[2]) : d.points }); });
-            }
-          };
-          restore('R', rAns, rConf, 'Reading'); restore('L', lAns, lConf, 'Listening');
-          restore('S', sAns, sConf, 'Speaking'); restore('W', wAns, wConf, 'Writing');
-          setQuestions(restoredQs); setStudentInput({ name, answers }); setIsSharedMode(true); setCurrentStep(Step.REPORT);
+          const rA = rAnsT.padEnd(36, ' '); const lA = lAnsT.padEnd(36, ' ');
+          rA.split('').forEach((c, i) => answers[`R-${i+1}`] = c === ' ' ? '' : c);
+          lA.split('').forEach((c, i) => answers[`L-${i+1}`] = c === ' ' ? '' : c);
+          const decodeScore = (char: string) => (char.charCodeAt(0) - 97) / 2;
+          sAnsE.split('').forEach((c, i) => answers[`S-${i+1}`] = decodeScore(c).toString());
+          wAnsE.split('').forEach((c, i) => answers[`W-${i+1}`] = decodeScore(c).toString());
+          setStudentInput({ name, answers });
+          setIsSharedMode(true);
+          setCurrentStep(Step.REPORT);
         }
       } catch (e) { console.error("Restore Error", e); }
     };
